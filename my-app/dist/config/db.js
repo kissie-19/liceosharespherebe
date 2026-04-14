@@ -7,7 +7,7 @@ const dbConfig = {
     database: 'liceosharesphere',
     waitForConnections: true,
     connectionLimit: 10,
-    queveLimit: 0,
+    queueLimit: 0, // fixed typo: queveLimit → queueLimit
 };
 const pool = mysql.createPool(dbConfig);
 export default pool;

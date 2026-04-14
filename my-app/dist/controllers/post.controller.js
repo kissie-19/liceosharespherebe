@@ -1,0 +1,91 @@
+import { PostModel } from '../models/post.model.js';
+export const PostController = {
+    async addPost(c) {
+        try {
+            const { userId, user_id, itemName, description, attachment, status } = await c.req.json();
+            const normalizedUserId = Number(userId ?? user_id);
+            // 🔎 Debug log: shows what Angular sends
+            console.log('Incoming post:', { userId: normalizedUserId, itemName, description, attachment, status });
+            if (!normalizedUserId || Number.isNaN(normalizedUserId)) {
+                return c.json({ message: 'User id is required' }, 400);
+            }
+            if (!itemName || !description) {
+                return c.json({ message: 'Item name and description are required' }, 400);
+            }
+            try {
+                const post = await PostModel.create(normalizedUserId, itemName, description, attachment, status ?? 'available');
+                return c.json({ message: 'Post added successfully!', post }, 201);
+            }
+            catch (dbErr) {
+                // 🔎 Log full MySQL error
+                console.error('DB insert error:', dbErr);
+                return c.json({ message: 'Failed to add post', error: dbErr.message }, 500);
+            }
+        }
+        catch (err) {
+            console.error('Controller error:', err);
+            return c.json({ message: 'Failed to add post', error: err.message }, 500);
+        }
+    },
+    async getPosts(c) {
+        try {
+            const posts = await PostModel.findAll();
+            console.log('Fetched posts:', posts);
+            c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            c.header('Pragma', 'no-cache');
+            c.header('Expires', '0');
+            return c.json(posts);
+        }
+        catch (err) {
+            console.error('DB fetch error:', err);
+            return c.json({ message: 'Failed to fetch posts', error: err.message }, 500);
+        }
+    },
+    async updatePost(c) {
+        try {
+            const postId = Number(c.req.param('id'));
+            const { userId, user_id, itemName, description, attachment, status } = await c.req.json();
+            const normalizedUserId = Number(userId ?? user_id);
+            if (!postId || Number.isNaN(postId)) {
+                return c.json({ message: 'Post id is required' }, 400);
+            }
+            if (!normalizedUserId || Number.isNaN(normalizedUserId)) {
+                return c.json({ message: 'User id is required' }, 400);
+            }
+            if (!itemName || !description) {
+                return c.json({ message: 'Item name and description are required' }, 400);
+            }
+            const post = await PostModel.updateOwnedPost(postId, normalizedUserId, itemName, description, status, attachment);
+            if (!post) {
+                return c.json({ message: 'Post not found or not owned by user' }, 404);
+            }
+            return c.json({ message: 'Post updated successfully', post });
+        }
+        catch (err) {
+            console.error('DB update error:', err);
+            return c.json({ message: 'Failed to update post', error: err.message }, 500);
+        }
+    },
+    async deletePost(c) {
+        try {
+            const postId = Number(c.req.param('id'));
+            const body = await c.req.json().catch(() => ({}));
+            const normalizedUserId = Number(body?.userId ?? body?.user_id);
+            if (!postId || Number.isNaN(postId)) {
+                return c.json({ message: 'Post id is required' }, 400);
+            }
+            if (!normalizedUserId || Number.isNaN(normalizedUserId)) {
+                return c.json({ message: 'User id is required' }, 400);
+            }
+            const deleted = await PostModel.deleteOwnedPost(postId, normalizedUserId);
+            if (!deleted) {
+                return c.json({ message: 'Post not found or not owned by user' }, 404);
+            }
+            return c.json({ message: 'Post deleted successfully' });
+        }
+        catch (err) {
+            console.error('DB delete error:', err);
+            return c.json({ message: 'Failed to delete post', error: err.message }, 500);
+        }
+    }
+};
