@@ -75,7 +75,7 @@ app.route('/auth', authRoute);
 app.route('/auth/borrow-requests', borrowRequestRoute);
 app.route('/auth/system-notifications', systemNotificationRoute);
 app.route('/auth/messages', messageRoute);
-app.route('/auth/otp', otpRoute);
+app.route('/api/otp', otpRoute);
 // Test route
 app.get('/', (c) => c.text('Hello Hono!'))
 

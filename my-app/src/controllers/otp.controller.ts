@@ -3,7 +3,6 @@ import pool from "../config/db.js";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import nodemailer from "nodemailer";
 
-// mao ni mag message sa email gamit ang nodemailer
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -12,7 +11,6 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// send otp
 export async function sendOtp(context: Context) {
   try {
     const body = await context.req.json();
@@ -20,28 +18,24 @@ export async function sendOtp(context: Context) {
 
     if (!email) return context.json({ message: "Email is required" }, 400);
 
-    // Check if email exists sa User table
     const [users] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM user WHERE email = ?`, [email]
+      `SELECT * FROM register WHERE email = ?`, [email]
     );
 
     if (users.length === 0) {
       return context.json({ message: "Email not found" }, 404);
     }
 
-    // Generate 4-digit OTP
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Save OTP sa database — expires after 10 minutes
     await pool.query<ResultSetHeader>(
       `INSERT INTO otp (email, code, expires_at) 
        VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 3 MINUTE))`,
       [email, code]
     );
 
-    // Send email
     await transporter.sendMail({
-      from: 'your_email@gmail.com',
+      from: 'voxldcu@gmail.com',
       to: email,
       subject: 'VoxLDCU - Password Reset Code',
       html: `
@@ -58,7 +52,6 @@ export async function sendOtp(context: Context) {
   }
 }
 
-// Verify OTP
 export async function verifyOtp(context: Context) {
   try {
     const body = await context.req.json();
@@ -79,7 +72,7 @@ export async function verifyOtp(context: Context) {
       return context.json({ message: "Invalid or expired code" }, 400);
     }
 
-    // Delete OTP after successful verification
+    // ✅ I-delete na dito pagka-verify
     await pool.query(`DELETE FROM otp WHERE email = ?`, [email]);
 
     return context.json({ message: "OTP verified successfully" }, 200);

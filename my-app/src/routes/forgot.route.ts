@@ -32,3 +32,16 @@ forgotRoute.post('/forgot-password', async (c) => {
 })
 
 export default forgotRoute
+
+forgotRoute.post('/check-email', async (c) => {
+  try {
+    const { email } = await c.req.json()
+    const [user] = await pool.query('SELECT * FROM register WHERE email = ?', [email])
+    if ((user as any[]).length === 0) {
+      return c.json({ message: 'Email not found!' }, 404)
+    }
+    return c.json({ message: 'Email found!' }, 200)
+  } catch (err: any) {
+    return c.json({ message: 'Failed to process request', error: err.message }, 500)
+  }
+})
