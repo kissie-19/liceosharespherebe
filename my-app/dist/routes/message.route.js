@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { MessageModel } from '../models/message.model.js';
+import { MessageCrypto, MessageModel } from '../models/message.model.js';
 const messageRoute = new Hono();
 const parseRequiredNumber = (value, fieldName) => {
     const normalizedValue = Number(value);
@@ -51,6 +51,21 @@ messageRoute.post('/', async (c) => {
     catch (error) {
         console.error('Message send failed:', error);
         return c.json({ message: error instanceof Error ? error.message : 'Failed to send message.' }, 400);
+    }
+});
+messageRoute.post('/verify', async (c) => {
+    try {
+        const body = await c.req.json();
+        const messageText = String(body.messageText ?? '').trim();
+        if (!messageText) {
+            throw new Error('messageText is required.');
+        }
+        const encrypted = MessageCrypto.encryptText(messageText);
+        const decrypted = MessageCrypto.decryptText(encrypted);
+        return c.json({ messageText, encrypted, decrypted });
+    }
+    catch (error) {
+        return c.json({ message: error instanceof Error ? error.message : 'Failed to verify encryption.' }, 400);
     }
 });
 messageRoute.patch('/thread/read', async (c) => {

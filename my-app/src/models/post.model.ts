@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { SystemNotificationModel } from './system-notification.model.js';
 import type { PoolConnection } from 'mysql2/promise';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
@@ -160,5 +161,24 @@ export const PostModel = {
     );
 
     return result.affectedRows > 0;
+  },
+
+  async deletePost(postId: number, userId: number, isAdmin: boolean = false) {
+    const query = isAdmin
+      ? 'DELETE FROM posts WHERE id = ?'
+      : 'DELETE FROM posts WHERE id = ? AND user_id = ?';
+    const params = isAdmin ? [postId] : [postId, userId];
+
+    const [result] = await pool.query<ResultSetHeader>(query, params);
+    return result.affectedRows > 0;
+  },
+
+  async createSystemNotification(postId: number, recipientId: number, actorId: number, message: string) {
+    await SystemNotificationModel.ensureTable();
+
+    await pool.query<ResultSetHeader>(
+      'INSERT INTO system_notifications (post_id, recipient_id, actor_id, type, message) VALUES (?, ?, ?, ?, ?)',
+      [postId, recipientId, actorId, 'post-deleted', message]
+    );
   }
 };

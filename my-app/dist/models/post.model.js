@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { SystemNotificationModel } from './system-notification.model.js';
 const statusesThatClosePendingRequests = new Set(['borrowed', 'returned']);
 export const PostModel = {
     async create(userId, itemName, description, attachment, status = 'available') {
@@ -115,5 +116,17 @@ export const PostModel = {
     async deleteOwnedPost(postId, userId) {
         const [result] = await pool.query('DELETE FROM posts WHERE id = ? AND user_id = ?', [postId, userId]);
         return result.affectedRows > 0;
+    },
+    async deletePost(postId, userId, isAdmin = false) {
+        const query = isAdmin
+            ? 'DELETE FROM posts WHERE id = ?'
+            : 'DELETE FROM posts WHERE id = ? AND user_id = ?';
+        const params = isAdmin ? [postId] : [postId, userId];
+        const [result] = await pool.query(query, params);
+        return result.affectedRows > 0;
+    },
+    async createSystemNotification(postId, recipientId, actorId, message) {
+        await SystemNotificationModel.ensureTable();
+        await pool.query('INSERT INTO system_notifications (post_id, recipient_id, actor_id, type, message) VALUES (?, ?, ?, ?, ?)', [postId, recipientId, actorId, 'post-deleted', message]);
     }
 };

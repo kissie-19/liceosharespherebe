@@ -1,4 +1,6 @@
 import { PostModel } from '../models/post.model.js';
+import pool from '../config/db.js';
+const ADMIN_EMAIL = 'npacatang89487@liceo.edu.ph';
 export const PostController = {
     async addPost(c) {
         try {
@@ -77,9 +79,22 @@ export const PostController = {
             if (!normalizedUserId || Number.isNaN(normalizedUserId)) {
                 return c.json({ message: 'User id is required' }, 400);
             }
-            const deleted = await PostModel.deleteOwnedPost(postId, normalizedUserId);
+            const [userRows] = await pool.query('SELECT email FROM register WHERE id = ?', [normalizedUserId]);
+            if (!userRows.length) {
+                return c.json({ message: 'Invalid user' }, 401);
+            }
+            const email = userRows[0].email;
+            const isAdmin = String(email).toLowerCase() === ADMIN_EMAIL;
+            const post = await PostModel.findById(postId);
+            if (!post) {
+                return c.json({ message: 'Post not found' }, 404);
+            }
+            if (isAdmin && Number(post.user_id) && Number(post.user_id) !== normalizedUserId) {
+                await PostModel.createSystemNotification(postId, Number(post.user_id), normalizedUserId, 'Your post has been removed as it violates the community regulations.');
+            }
+            const deleted = await PostModel.deletePost(postId, normalizedUserId, isAdmin);
             if (!deleted) {
-                return c.json({ message: 'Post not found or not owned by user' }, 404);
+                return c.json({ message: 'Post not found or not authorized to delete' }, 404);
             }
             return c.json({ message: 'Post deleted successfully' });
         }

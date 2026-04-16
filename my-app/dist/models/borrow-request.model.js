@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { SystemNotificationModel } from './system-notification.model.js';
 class BorrowRequestError extends Error {
     statusCode;
     constructor(statusCode, message) {
@@ -32,11 +33,25 @@ const notificationSelect = `SELECT bn.id,
                                    COALESCE(actor.profile_picture, '') AS actorProfilePicture,
                                    p.item_name AS itemName,
                                    br.status,
-                                   bn.created_at AS createdAt
+                                   bn.created_at AS createdAt,
+                                   NULL AS message
                             FROM borrow_notifications bn
                             JOIN borrow_requests br ON br.id = bn.request_id
                             JOIN posts p ON p.id = br.post_id
                             JOIN register actor ON actor.id = bn.actor_id`;
+const systemNotificationSelect = `SELECT sn.id,
+                                        0 AS requestId,
+                                        sn.post_id AS postId,
+                                        sn.type,
+                                        actor.fullname AS actorName,
+                                        COALESCE(actor.profile_picture, '') AS actorProfilePicture,
+                                        COALESCE(p.item_name, '') AS itemName,
+                                        'declined' AS status,
+                                        sn.created_at AS createdAt,
+                                        sn.message
+                                 FROM system_notifications sn
+                                 LEFT JOIN posts p ON p.id = sn.post_id
+                                 JOIN register actor ON actor.id = sn.actor_id`;
 const toIsoString = (value) => {
     if (value instanceof Date) {
         return value.toISOString();
@@ -298,16 +313,22 @@ export const BorrowRequestModel = {
        WHERE br.borrower_id = ?
          AND br.status = 'approved'
          AND bn.id IS NULL`, [userId]);
-        const [rows] = await pool.query(`${notificationSelect}
-       WHERE bn.recipient_id = ?
-         AND (
-           bn.type <> 'incoming-request'
-           OR (
-             br.status = 'pending'
-             AND p.status <> 'borrowed'
+        await SystemNotificationModel.ensureTable();
+        const [rows] = await pool.query(`SELECT * FROM (
+         ${notificationSelect}
+         WHERE bn.recipient_id = ?
+           AND (
+             bn.type <> 'incoming-request'
+             OR (
+               br.status = 'pending'
+               AND p.status <> 'borrowed'
+             )
            )
-         )
-       ORDER BY bn.created_at DESC, bn.id DESC`, [userId]);
+         UNION ALL
+         ${systemNotificationSelect}
+         WHERE sn.recipient_id = ?
+       ) AS all_notifications
+       ORDER BY createdAt DESC, id DESC`, [userId, userId]);
         return rows.map(mapNotificationRow);
     },
     async getBorrowedItemsForUser(userId) {

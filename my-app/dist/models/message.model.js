@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import pool from '../config/db.js';
 let ensureTablePromise = null;
 const createIndexIfMissing = async (sql) => {
@@ -33,6 +34,40 @@ const ensureMessagesTable = async () => {
     })();
     return ensureTablePromise;
 };
+const getEncryptionKey = () => {
+    const key = process.env.MESSAGE_ENCRYPTION_KEY;
+    if (!key || !key.trim()) {
+        throw new Error('MESSAGE_ENCRYPTION_KEY environment variable is required for message encryption.');
+    }
+    return crypto.createHash('sha256').update(key, 'utf8').digest();
+};
+const encryptText = (text) => {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
+    const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return `${iv.toString('base64')}:${tag.toString('base64')}:${encrypted.toString('base64')}`;
+};
+const decryptText = (cipherText) => {
+    if (!cipherText || typeof cipherText !== 'string') {
+        return cipherText;
+    }
+    const parts = cipherText.split(':');
+    if (parts.length < 3) {
+        return cipherText;
+    }
+    const iv = Buffer.from(parts[0], 'base64');
+    const tag = Buffer.from(parts[1], 'base64');
+    const encrypted = Buffer.from(parts.slice(2).join(':'), 'base64');
+    try {
+        const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), iv);
+        decipher.setAuthTag(tag);
+        return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+    }
+    catch {
+        return cipherText;
+    }
+};
 export const MessageModel = {
     async getConversationsForUser(userId) {
         await ensureMessagesTable();
@@ -53,7 +88,7 @@ export const MessageModel = {
             otherUserId: Number(row.otherUserId),
             otherName: row.otherName,
             otherProfilePicture: row.otherProfilePicture,
-            lastMessage: row.lastMessage,
+            lastMessage: decryptText(row.lastMessage),
             lastMessageAt: row.lastMessageAt,
             unreadCount: Number(row.unreadCount || 0)
         }));
@@ -77,7 +112,7 @@ export const MessageModel = {
             id: Number(row.id),
             senderId: Number(row.senderId),
             receiverId: Number(row.receiverId),
-            messageText: row.messageText,
+            messageText: decryptText(row.messageText),
             isRead: Number(row.isRead) === 1,
             createdAt: row.createdAt,
             senderName: row.senderName,
@@ -93,8 +128,9 @@ export const MessageModel = {
         if (senderId === receiverId) {
             throw new Error('Cannot send a message to yourself.');
         }
+        const encryptedMessage = encryptText(trimmedMessage);
         const [insertResult] = await pool.query(`INSERT INTO direct_messages (sender_id, receiver_id, message_text)
-       VALUES (?, ?, ?)`, [senderId, receiverId, trimmedMessage]);
+       VALUES (?, ?, ?)`, [senderId, receiverId, encryptedMessage]);
         const [rows] = await pool.query(`SELECT dm.id,
               dm.sender_id AS senderId,
               dm.receiver_id AS receiverId,
@@ -112,7 +148,7 @@ export const MessageModel = {
             id: Number(row.id),
             senderId: Number(row.senderId),
             receiverId: Number(row.receiverId),
-            messageText: row.messageText,
+            messageText: decryptText(row.messageText),
             isRead: Number(row.isRead) === 1,
             createdAt: row.createdAt,
             senderName: row.senderName,
@@ -136,4 +172,8 @@ export const MessageModel = {
          AND is_read = 0`, [userId]);
         return Number(rows[0]?.unreadCount || 0);
     }
+};
+export const MessageCrypto = {
+    encryptText,
+    decryptText
 };

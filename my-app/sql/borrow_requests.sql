@@ -28,3 +28,17 @@ CREATE TABLE IF NOT EXISTS borrow_notifications (
 );
 
 CREATE INDEX idx_borrow_notifications_recipient_created ON borrow_notifications(recipient_id, created_at);
+CREATE TABLE IF NOT EXISTS system_notifications (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  post_id INT NULL,
+  recipient_id INT NOT NULL,
+  actor_id INT NOT NULL,
+  type ENUM('post-deleted') NOT NULL,
+  message TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_system_notifications_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL,
+  CONSTRAINT fk_system_notifications_recipient FOREIGN KEY (recipient_id) REFERENCES register(id) ON DELETE CASCADE,
+  CONSTRAINT fk_system_notifications_actor FOREIGN KEY (actor_id) REFERENCES register(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_system_notifications_recipient_created ON system_notifications(recipient_id, created_at);

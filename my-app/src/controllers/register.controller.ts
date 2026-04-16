@@ -103,3 +103,47 @@ export async function login(context: Context) {
     return context.json({ message: "Internal server error" }, 500);
   }
 }
+
+export async function resetPassword(context: Context) {
+  try {
+    const body = await context.req.json();
+
+    if (!body.email) return context.json({ message: "Email is required" }, 400);
+    if (!body.password) return context.json({ message: "Password is required" }, 400);
+
+    const hashedPassword = await bcrypt.hash(body.password, 10);
+
+    const [result] = await pool.query<ResultSetHeader>(
+      `UPDATE User SET password = ? WHERE email = ?`,
+      [hashedPassword, body.email]
+    );
+
+    if (result.affectedRows > 0) {
+      return context.json({ message: "Password reset successfully" }, 200);
+    }
+
+    return context.json({ message: "Email not found" }, 404);
+  } catch (error) {
+    console.log(error);
+    return context.json({ message: "Internal server error" }, 500);
+  }
+}
+
+export async function checkEmail(context: Context) {
+  try {
+    const body = await context.req.json();
+
+    const [rows] = await pool.query<UserModel[]>(
+      `SELECT * FROM User WHERE email = ?`, [body.email]
+    );
+
+    if (rows.length === 0) {
+      return context.json({ message: "Email not found" }, 404);
+    }
+
+    return context.json({ message: "Email found" }, 200);
+  } catch (error) {
+    console.log(error);
+    return context.json({ message: "Internal server error" }, 500);
+  }
+}

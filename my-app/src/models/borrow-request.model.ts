@@ -1,9 +1,10 @@
 import pool from '../config/db.js';
+import { SystemNotificationModel } from './system-notification.model.js';
 import type { PoolConnection } from 'mysql2/promise';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 export type BorrowRequestStatus = 'pending' | 'approved' | 'declined';
-export type BorrowNotificationType = 'incoming-request' | 'request-approved' | 'request-declined';
+export type BorrowNotificationType = 'incoming-request' | 'request-approved' | 'request-declined' | 'post-deleted';
 
 export interface BorrowRequestRecord {
   id: number;
@@ -31,6 +32,7 @@ export interface BorrowNotificationRecord {
   itemName: string;
   status: BorrowRequestStatus;
   createdAt: string;
+  message?: string;
 }
 
 export interface BorrowedItemRecord {
@@ -90,6 +92,7 @@ interface BorrowNotificationRow extends RowDataPacket {
   itemName: string;
   status: BorrowRequestStatus;
   createdAt: Date | string;
+  message?: string;
 }
 
 interface BorrowedItemRow extends RowDataPacket {
@@ -157,11 +160,26 @@ const notificationSelect = `SELECT bn.id,
                                    COALESCE(actor.profile_picture, '') AS actorProfilePicture,
                                    p.item_name AS itemName,
                                    br.status,
-                                   bn.created_at AS createdAt
+                                   bn.created_at AS createdAt,
+                                   NULL AS message
                             FROM borrow_notifications bn
                             JOIN borrow_requests br ON br.id = bn.request_id
                             JOIN posts p ON p.id = br.post_id
                             JOIN register actor ON actor.id = bn.actor_id`;
+
+const systemNotificationSelect = `SELECT sn.id,
+                                        0 AS requestId,
+                                        sn.post_id AS postId,
+                                        sn.type,
+                                        actor.fullname AS actorName,
+                                        COALESCE(actor.profile_picture, '') AS actorProfilePicture,
+                                        COALESCE(p.item_name, '') AS itemName,
+                                        'declined' AS status,
+                                        sn.created_at AS createdAt,
+                                        sn.message
+                                 FROM system_notifications sn
+                                 LEFT JOIN posts p ON p.id = sn.post_id
+                                 JOIN register actor ON actor.id = sn.actor_id`;
 
 const toIsoString = (value: Date | string) => {
   if (value instanceof Date) {
@@ -540,18 +558,25 @@ export const BorrowRequestModel = {
       [userId]
     );
 
+    await SystemNotificationModel.ensureTable();
+
     const [rows] = await pool.query<BorrowNotificationRow[]>(
-      `${notificationSelect}
-       WHERE bn.recipient_id = ?
-         AND (
-           bn.type <> 'incoming-request'
-           OR (
-             br.status = 'pending'
-             AND p.status <> 'borrowed'
+      `SELECT * FROM (
+         ${notificationSelect}
+         WHERE bn.recipient_id = ?
+           AND (
+             bn.type <> 'incoming-request'
+             OR (
+               br.status = 'pending'
+               AND p.status <> 'borrowed'
+             )
            )
-         )
-       ORDER BY bn.created_at DESC, bn.id DESC`,
-      [userId]
+         UNION ALL
+         ${systemNotificationSelect}
+         WHERE sn.recipient_id = ?
+       ) AS all_notifications
+       ORDER BY createdAt DESC, id DESC`,
+      [userId, userId]
     );
 
     return rows.map(mapNotificationRow);

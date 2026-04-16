@@ -59,7 +59,9 @@ borrowRequestRoute.get('/notifications', async (c) => {
       ...notification,
       message: notification.type === 'incoming-request'
         ? `${notification.actorName} requested to borrow "${notification.itemName}".`
-        : `${notification.actorName} ${notification.type === 'request-approved' ? 'accepted' : 'declined'} your request for "${notification.itemName}".`
+        : notification.type === 'post-deleted'
+          ? notification.message || 'Your post has been removed as it violates the community regulations.'
+          : `${notification.actorName} ${notification.type === 'request-approved' ? 'accepted' : 'declined'} your request for "${notification.itemName}".`
     })) });
   } catch (error) {
     const { status, body } = getErrorResponse(error);
